@@ -10,7 +10,7 @@ import Svg,{
     Circle, G, Path, Text as SvgText
 //    Ellipse,LinearGradient,RadialGradient,Line,Polygon,Polyline,Rect,Symbol,Use,Defs,Stop
 } from 'react-native-svg';
-import { Spring, config as SpringConfig, Transition, animated, interpolate } from 'react-spring/dist/native';
+import { Spring, config as SpringConfig, Transition, animated, interpolate } from '../react-spring/dist/native';
 
 type State = {
     targets: [],

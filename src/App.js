@@ -12,6 +12,7 @@ import {
   Text,
   View, Animated
 } from 'react-native';
+import Parallax from './react-spring/targets/native/Parallax';
 import { connect } from 'react-redux'
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -67,7 +68,7 @@ const mapDispatchToProps = (dispatch) => ({
     }
 });
 
-const Page = ({ offset, caption, first, second, gradient, onClick }) => (
+const Page = ({ offset, caption, first, second, gradient, onClick, children }) => (
     <React.Fragment>
         <Parallax.Layer offset={offset} speed={0.2} onClick={onClick}>
             <div className="slopeBegin" />
@@ -111,6 +112,8 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
     }
 
     showKeypad() {
+        this.refs.parallax.scrollTo(0);
+        /*
         Animated.parallel([
             Animated.spring(
                 this.state.controls.keypad,
@@ -128,10 +131,12 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
                     duration: 1000
                 }
             )
-        ]).start();
+        ]).start();*/
     }
 
     showControls() {
+        this.refs.parallax.scrollTo(1);
+        /*
         Animated.parallel([
             Animated.spring(
                 this.state.controls.keypad,
@@ -149,7 +154,7 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
                     duration: 1000
                 }
             )
-        ]).start();
+        ]).start();*/
     }
 
     onStoreChange() {
@@ -289,43 +294,46 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
             ...drawerState,
             motor: motorState
         };
-
+        //scroll = to => this.refs.parallax.scrollTo(to);
         return (
               <View style={styles.container}>
-                  <LinearGradient colors={['#364F64', '#ACBDC8', '#3C5160']} style={styles.container}>
+                      <Parallax className="container" ref="parallax" pages={2} horizontal scrolling={false}>
 
-                      <View style={styles.welcome}>
-                        <Text style={styles.welcomeText}>
-                            { this.getBannerText() }
-                        </Text>
-                      </View>
+                          <Parallax.Layer offset={0} speed={0.2}>
+                              <View style={styles.welcome}>
+                                <Text style={styles.welcomeText}>
+                                    { this.getBannerText() }
+                                </Text>
+                              </View>
 
-                      <Text style={styles.welcomeText}>
-                          { this.state && this.state.code }
-                      </Text>
+                              <Text style={styles.welcomeText}>
+                                  { this.state && this.state.code }
+                              </Text>
 
-                      <Animated.View style={styles.feedback}>
-                          <Dots pattern={this.getDots()} visible={!this.state.authenticated} />
-                      </Animated.View>
+                              <View style={styles.feedback}>
+                                  <Dots pattern={this.getDots()} visible={!this.state.authenticated} />
+                              </View>
+                          </Parallax.Layer>
 
-                      <Animated.View style={[ styles.controls, {opacity: this.state.controls.fader} ]}>
-                        <Lock lock={this.state.lock} protocol={this.state.protocol} state={state} />
-                      </Animated.View>
+                          <Parallax.Layer offset={1} speed={0.2}>
 
-                      <Animated.View style={[styles.keypadView,
-                          {transform: [{translateY: this.state.controls.keypad}]}]}
-                      >
-                        <Keypad
-                            length={lock ? (lock.digits+1) : 5 }
-                            value={this.state.passcode}
-                            onUpdate={this.onKeypadEntry}
-                        />
-                      </Animated.View>
+                              <Animated.View style={[ styles.controls, {opacity: this.state.controls.fader} ]}>
+                                <Lock lock={this.state.lock} protocol={this.state.protocol} state={state} />
+                              </Animated.View>
 
-                      <View style={styles.footer}>
-                      </View>
+                              <Animated.View style={[styles.keypadView,
+                                  {transform: [{translateY: this.state.controls.keypad}]}]}
+                              >
+                                <Keypad
+                                    length={lock ? (lock.digits+1) : 5 }
+                                    value={this.state.passcode}
+                                    onUpdate={this.onKeypadEntry}
+                                />
+                              </Animated.View>
 
-                  </LinearGradient>
+                          </Parallax.Layer>>
+
+                      </Parallax>
               </View>
     );
   }
