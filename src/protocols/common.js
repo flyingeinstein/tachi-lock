@@ -30,6 +30,10 @@ export interface IMotorProtocol extends IProtocol {
     onMotorUpdated: (motor: IMotorProtocol, axis: number, state: IMotorState) => void;
 }
 
+export interface ITimeout {
+    interval: number;
+    remaining: number;
+}
 
 export interface IMotorCommand {
     method?: string;          //   'get' or 'post'
@@ -52,6 +56,7 @@ export interface IDrawerState {
     position: number;   // 0 ... 1.0
     button: boolean;
     state: string;  // idle, extending, retracting, jammed
+    timeout: ITimeout | boolean;
 }
 
 export interface ILockState {
@@ -68,17 +73,37 @@ export class Protocol {
 
     getEndpoint(endpointId, args) : {} {
         const lock = this.lock;
-        if(!lock || !lock.endpoint || !lock.endpoint[endpointId])
+        const path = endpointId.split('.');
+        if(!lock || !lock.endpoint || !path || !Array.isArray(path))
             return null;
         else {
-            let url = (lock.endpoint.baseUrl)
-                ? lock.endpoint.baseUrl
-                : 'http://localhost/';
-            url += lock.endpoint[endpointId];
-            // todo: add args into query string
-            // todo: if post, build the form-data
+            // get endpoint from the path
+            let endpoint = lock.endpoint;
+            while(endpoint && path.length>0) {
+                endpoint = endpoint[path.shift()];
+            }
+            if(!endpoint)
+                return null;    // endpoint not found
+
+            let method = 'get';
+            let methodPrefix = endpoint.match(/^(get|post|put) */i);
+            if(methodPrefix) {
+                // extract the http verb
+                method = methodPrefix[1];
+                endpoint = endpoint.substr(methodPrefix[0].length);
+            }
+
+            let url = '/'+endpoint;
+
+            // add args into query string
+            let replacer = function(match, p1, p2, p3, offset, string) {
+                // p1 is nondigits, p2 digits, and p3 non-alphanumerics
+                return args[ p1 ];
+            };
+            url = url.replace(/\{([A-Za-z_]*)\}/, replacer);
+
             return {
-                method: 'get',
+                method,
                 url
             }
         }

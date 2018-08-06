@@ -38,53 +38,77 @@ class SimpleLock extends Component<LockProps> {
             protocol.enable && protocol.enable(false);
         } else {
             switch(v.id) {
-                case 1: protocol.open && protocol.open(0.50); break;
-                case 2: protocol.open && protocol.open(0.75); break;
+                case 1: protocol.open && protocol.open(0.33); break;
+                case 2: protocol.open && protocol.open(0.66); break;
                 case 3: protocol.open && protocol.open(1.00); break;
                 default: protocol.close && protocol.close(); break;
             }
         }
     }
 
-    getPositionTracker()
+    static getPosition(position: number) {
+        return  100 + position*300;
+    }
+
+    static getRadius(position: number) {
+        return (position ===0)
+            ? 35
+            : 15 + (20*position);
+    }
+
+    getPositionTracker(outlineStyle)
     {
         let state = this.props.state;
         if(state && state.position) {
+            let position = (state && state.position) ? state.position : 0;
             // translate percentage into location on notched bar (which isnt linear)
-            let position = state.position;
-            if(position<0.50)
-                position = 100 + (position*200);
-            else if(position<0.75)
-                position = 200 + ((position-0.5)*400);
-            else if(position <= 1.00)
-                position = 300 + ((position-0.75)*400);
-            else
-                return null;    // no tracker
-            return <Notch key='position' value={position} radius={5} fill='cyan' selectable={false} />;
+            return <Notch key='position' value={SimpleLock.getPosition(position)} radius={SimpleLock.getRadius(position)} fill={outlineStyle.stroke} selectable={false} />;
         }
     }
 
+    opacity(color, op) {
+        const hex = '0123456789ABCDEF';
+        if(!op) op = 255;
+        return color+hex[Math.floor(op/16)]+hex[Math.floor(op%16)];
+    }
+
     render() {
+        const hu = 80, br = 255;
         let { lock, state } = this.props;
-        //console.log("Simple ", lock, this.props.protocol);
+        //console.log("Simple ", state);
         if(!lock || !lock.name)
-            return <Text>Select a lock</Text>;
+            return null;
         if(lock.locked)
             return <Text>Lock has timed out</Text>;
-        //let trackers = this.getTrackers();
-        //if(state && !isNaN(state.position))
-        //console.log("state ", state);
+        let colors = {
+            disabled: (opacity) => this.opacity('#42C2E8',opacity),
+            closed: (opacity) => this.opacity('#3CE75B',opacity),
+            open: (opacity) => this.opacity('#E94A81',opacity),
+            outline: (opacity) => this.opacity('#FFFFFF', opacity)
+        };
+        colors.status = (opacity) => (!state || !state.motor)
+            ? colors.disabled(opacity)
+            : state.closed
+                ? colors.closed(opacity) //`rgba(66,194,232,0.9)`
+                : colors.open(opacity);
         let notchStyle = {
-            fill: (state.motor && state.motor.enabled) ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'
-        }
+            stroke: colors.status(),
+            strokeWidth: 4,
+            fill: 'transparent'
+        };
+        let outlineStyle = {
+            fill: "none",
+            strokeWidth: 1.5,
+            stroke: colors.outline(0.4*255)
+        };
         return (
             <View style={styles.container}>
-                <NotchedTrackbar target={2} onDropped={this.setDrawer}>
-                    <Notch value={100} radius={35} style={notchStyle}>CLOSE</Notch>
-                    <Notch value={200} radius={20} style={notchStyle}>50%</Notch>
-                    <Notch value={300} radius={26} style={notchStyle}>75%</Notch>
-                    <Notch value={400} radius={35} style={notchStyle}>OPEN</Notch>
-                    { state && state.position && this.getPositionTracker() }
+                <NotchedTrackbar target={2} trackSize={6} outlineMargin={6} outlineStyle={outlineStyle} onDropped={this.setDrawer}>
+                    <Notch value={SimpleLock.getPosition(0.00)} radius={SimpleLock.getRadius(0.00)} style={notchStyle}>CLOSE</Notch>
+                    <Notch value={SimpleLock.getPosition(1/3)} radius={SimpleLock.getRadius(0.33)} style={notchStyle} />
+                    <Notch value={SimpleLock.getPosition(2/3)} radius={SimpleLock.getRadius(0.66)} style={notchStyle} />
+                    <Notch value={SimpleLock.getPosition(1.00)} radius={SimpleLock.getRadius(1.00)} style={notchStyle}>OPEN</Notch>
+                    { this.getPositionTracker(notchStyle) }
                 </NotchedTrackbar>
             </View>
         );

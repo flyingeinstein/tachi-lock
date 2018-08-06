@@ -60,6 +60,9 @@ type Props = {
     // the width of the track between targets
     trackSize?: number,
 
+    // the space between a target and the outline
+    outlineMargin?: number,
+
     // when dragging the target this is the size of the drag indicator or hot spot.
     hotspotSize?: number,
 
@@ -69,6 +72,7 @@ type Props = {
 
     targetStyle?: NotchStyle,
     hotspotStyle?: NotchStyle,
+    outlineStyle?: NotchStyle,
 
     // called each time the user drags to a new position and hasnt yet let go
     onTracking: (target, selection) => void,
@@ -87,8 +91,8 @@ type NotchState = {
 
 export class Notch extends Component<NotchProps, NotchState> {
     render() {
-        let { x, y, value } = this.props;
-        return <SvgText x={x} y={y+5} textAnchor='middle' fill='white'>{this.props.children}</SvgText>;
+        let { y, value } = this.props;
+        return <SvgText x={0} y={y+5} textAnchor='middle' fill='rgba(255,255,255,0.7)'>{this.props.children}</SvgText>;
     }
 }
 
@@ -103,6 +107,11 @@ export default class NotchedTrackbar extends Component<Props, State> {
             strokeWidth: 16,
             stroke: 'rgba(255,100,100,0.3)',
             fill: 'transparent'
+        },
+        outlineStyle: {
+            fill: "none",
+            strokeWidth: 1.5,
+            stroke:'rgba(255,255,255,0.8)'
         }
     };
 
@@ -156,6 +165,7 @@ export default class NotchedTrackbar extends Component<Props, State> {
                     radius,
                     selectable,
                     ...rest,
+                    component: c,
                     style: {
                         fill: fill || defaultTargetStyle.fill,
                         stroke: stroke || defaultTargetStyle.stroke,
@@ -322,11 +332,13 @@ export default class NotchedTrackbar extends Component<Props, State> {
 
     computeOutline(targets) {
         let prev = null;
+        let outlineMargin = this.props.outlineMargin || this.props.trackSize;
+        outlineMargin += this.props.outlineStyle.strokeWidth/2; // add the outline half-width
 
         // recreate objects and keep ordinal as id field
         // sort by radius so we can do our obscure tests
         targets = targets
-            .map(t=> ({ ...t, radius:t.radius+6 }))    // must copy since sort is in-place
+            .map(t=> ({ ...t, radius:t.radius+outlineMargin }))    // must copy since sort is in-place
             .sort( (a,b) => a.radius < b.radius );
 
         for(let a=0;a<targets.length; a++) {
@@ -627,7 +639,7 @@ export default class NotchedTrackbar extends Component<Props, State> {
                        <G>
                            { this.renderTargets(targets) }
                            { false && outline.anchors && this.renderOutlineAnchors(outline.anchors) }
-                           <Path d={this.renderOutline(outline)} fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+                           <Path d={this.renderOutline(outline)} {...this.props.outlineStyle} />
                        </G>
                    </Svg> }
                </Animated.View>

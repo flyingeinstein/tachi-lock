@@ -14,28 +14,42 @@ const defaultLocks = [{
     },
     encoding: 'plain-text',      // plain-text, base64, md5, challenge-response
     endpoint: {
-        baseUrl: 'http://simlock/',
-        lock: 'lock?code={code}',
-        unlock: 'unlock',
-        enable: 'motor/enable',
-        disable: 'motor/disable',
-        open: 'open/{position}',
-        close: '/motor/home'
+        baseUrl: 'http://simlock',
+        lock: {
+            status: 'GET status',
+            lock: 'POST control/lock',
+            unlock: 'POST control/unlock?code={code}'
+        },
+        drawer: {
+            open: 'POST control/open?percent={percent}',
+            close: 'POST control/close'
+        },
+        motor: {
+            enable: 'POST motor/enable',
+            disable: 'POST motor/disable'
+        }
     }
 }, {
     name: 'Secret Drawer',
     type: 'tachi-lock',
     prefix: 2,
-    digits: 3,
+    digits: 4,
     encoding: 'plain-text',      // plain-text, base64, md5, challenge-response
     endpoint: {
-        baseUrl: 'http://tachilock/',
-        lock: 'lock?code={code}',
-        unlock: 'unlock',
-        enable: 'motor/enable',
-        disable: 'motor/disable',
-        open: 'open/{position}',
-        close: '/motor/home'
+        baseUrl: 'http://192.168.2.170',
+        lock: {
+            status: 'GET status',
+            lock: 'POST control/lock',
+            unlock: 'POST control/unlock?code={code}'
+        },
+        drawer: {
+            open: 'POST control/open?percent={percent}',
+            close: 'POST control/close'
+        },
+        motor: {
+            enable: 'POST motor/enable',
+            disable: 'POST motor/disable'
+        }
     }
 }, {
     name: 'Projector',

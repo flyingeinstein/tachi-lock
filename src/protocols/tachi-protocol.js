@@ -1,21 +1,26 @@
 import axios from 'axios';
 import * as qs from 'qs';
 
-import { IMotorCommand, IMotorInfo, IMotorState} from "./common";
+import type {IProtocol, IDrawerProtocol, ILockProtocol, IMotorInfo, IMotorCommand, IDrawerState, ILockState } from "./common";
+import {Protocol, Capabilities } from "./common";
 
 const credentials = {
     host: "192.168.2.170",
     secureHost: false
 };
 
-export default class TachiProtocol {
+export default class TachiProtocol extends Protocol implements IProtocol, ILockProtocol, IDrawerProtocol  {
 
     instance : {};
+    lockState : ILockState;
+    drawerState : IDrawerState;
 
     constructor(lockProps, dispatch) {
+        super(lockProps, dispatch);
+
         this.instance = axios.create({
-            baseURL: lockProps.endpoint,
-            timeout: 1000,
+            baseURL: lockProps.endpoint.baseUrl,
+            timeout: 10000,
             responseType: 'json'
         });
         this.dispatch = dispatch;
@@ -25,7 +30,40 @@ export default class TachiProtocol {
 
     setState(state) {
         console.log("motor", state);
-        dispatch({ type: 'STATUS', payload: state });
+        //dispatch({ type: 'STATUS', payload: state });
+    }
+
+    request(endpointId : string, args) : Promise {
+        let endpoint = this.getEndpoint(endpointId, args);
+        if(endpoint)
+            console.log("request => "+endpoint.method.toUpperCase()+" "+endpoint.url);
+
+        // we fake a request by setting a timer and the running the lambda code
+        return new Promise((resolve, reject) => {
+            this.instance.request({
+                url: endpoint.url,
+                method: endpoint.method
+            })
+                .then( (response) => {
+                    console.log("lock returned ", response);
+                    if(response.lock) {
+                        // lock state
+                        this.setLockState({ locked: status.lock==="locked" });
+                    } if(response.drawer && response.button) {
+                        // drawer status
+                        this.setDrawerState({ closed: status.drawer==="closed", button: status.button })
+                    } else {
+                        const motorResponse: IMotorInfo = response.data;
+                        this.setState({motor: motorResponse});
+                    }
+                    resolve(response);
+                })
+                .catch((error) => {
+                    console.log("error ", error.response);
+                    this.setState( { remoteStatus: 'bad response' });
+                    reject(error);
+                });
+        });
     }
 
     command(options: IMotorCommand) {
@@ -81,16 +119,53 @@ export default class TachiProtocol {
             });
     }
 
+    setLockState(state) {
+        this.lockState = {...this.lockState, ...state};
+        console.log("tachi.lockState ", this.lockState);
+        this.lock.onLockUpdated && this.lock.onLockUpdated(this, this.lockState);
+    }
+
+    setDrawerState(state) {
+        this.drawerState = {...this.drawerState, ...state};
+        console.log("tachi.drawerState ", this.drawerState);
+        this.lock.onDrawerUpdated && this.lock.onDrawerUpdated(this, this.drawerState);
+    }
+
+    lock() {
+        return this.request("lock.lock", { percent }).then((status) => {
+            this.echo("locked");
+
+
+        });
+    }
+
+    unlock(code : string) {
+        return this.request("lock.unlock", { code });/*
+            .then((status) => {
+                if(status.lock==="unlocked") {
+                    console.log("Unlocked!!!");
+                }
+            })
+            .catch(error => {
+                if(error.response.status===401) {
+                    console.log("access denied!");
+                }
+            })*/
+    }
+
     enable(enable: boolean) {
-        console.log("protocol says "+(enable?"enable":"disable"));
+        console.log("tachi protocol says "+(enable?"enable":"disable"));
     }
 
     open(percent : number) {
-        console.log("protocol says "+percent);
+        console.log("tachi protocol says " + percent);
+        /*return this.request("drawer.open", {percent: Math.round(percent * 100)}, (resolve, reject) => {
+
+        });*/
     }
 
     close() {
-        console.log("protocol says close");
+        console.log("tachi protocol says close");
     }
 
     getMotorStatus() {
@@ -145,7 +220,7 @@ export default class TachiProtocol {
         }
     }
 
-    toggleMotorEnable(e : React.ChangeEvent<HTMLInputElement>) {
+/*    toggleMotorEnable(e : React.ChangeEvent<HTMLInputElement>) {
         const toggle = e.target.checked;
         this.motorEnable(toggle);
     }
@@ -155,4 +230,5 @@ export default class TachiProtocol {
         this.setState( { motor: { position: motor.position, target, speed: motor.speed, state: motor.state }, remoteStatus: "OK"});
         this.motorPosition(target);
     }
+*/
 }

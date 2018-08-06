@@ -9,10 +9,14 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
     constructor(lockProps, dispatch) {
         super(lockProps, dispatch);
 
+        // ILockState properties
+        this.locked = true;
+
         // configure simulation settings
         let sim = lockProps.simulation || {};
         this.simulation = {
             passcode: sim.passcode || '123456789'.substr(0, lockProps.digits),
+            timeout: sim.timeout || 15000,
             latency: {
                 min: (sim.latency && sim.latency.min) || 50,
                 max: (sim.latency && sim.latency.max) || 500
@@ -24,6 +28,7 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
             speed: 0,
             position: 0,
             target: 0,
+            state: 'idle',
             config: {
                 speed: {
                     extending: 5000,
@@ -44,15 +49,20 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
             axis.sendUpdate = this.sendMotorUpdate.bind(this,id,axis);
         });
 
+        this.hitLockTimer = this.hitLockTimer.bind(this);
+        this.clearLockTimer = this.clearLockTimer.bind(this);
+
         this.lock.digits = this.simulation.passcode.length;
         this.position = this.target = 0;  // set position to home
+
+        this.lock.onLockUpdated && this.lock.onLockUpdated(this, { locked: this.locked });
+        this.sendMotorUpdate(0, this.axis[0]);
     }
 
     request(endpointId : string, args, lambda : (resolve, reject) => void) : Promise {
         let {latency} = this.simulation;
         let endpoint = this.getEndpoint(endpointId, args);
-        if(endpoint)
-            console.log("request => "+endpoint.url);
+        //if(endpoint) console.log("request => "+endpoint.url);
 
         // we fake a request by setting a timer and the running the lambda code
         return new Promise((resolve, reject) => {
@@ -70,19 +80,46 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
         console.log(this.protocolName()+" says "+msg);
     }
 
-    lock() {
-        return this.request("lock", { percent }, (resolve, reject) => {
+    clearLockTimer(update : boolean = true) {
+        if(this.lockTimer) {
+            clearTimeout(this.lockTimer);
+            this.lockTimer = undefined;
+            this.timeout = undefined;
+
+            if(update)
+                this.lock.onLockUpdated && this.lock.onLockUpdated(this, { locked: this.locked, timeout: this.timeout || false });
+        }
+    }
+
+    hitLockTimer() {
+        this.clearLockTimer(false);
+        this.timeout = { interval: this.simulation.timeout, remaining: this.simulation.timeout };
+        this.lockTimer = setInterval(() => {
+            this.timeout.remaining -= 150;
+            if(this.timeout.remaining <= 0) {
+                this.clearLockTimer(false);
+                this.lockNow();
+            }
+            this.lock.onLockUpdated && this.lock.onLockUpdated(this, { locked: this.locked, timeout: this.timeout || false });
+        }, 150);
+    }
+
+    lockNow() {
+        return this.request("lock.lock", { }, (resolve, reject) => {
             this.echo("locked");
-            this.dispatch(lockActions.lock());
+            this.locked = true;
+            this.lock.onLockUpdated && this.lock.onLockUpdated(this, { locked: this.locked, timeout: this.timeout || false });
         });
     }
 
     unlock(code : string) {
-        return this.request("unlock", { code }, (resolve, reject) => {
+        return this.request("lock.unlock", { code }, (resolve, reject) => {
             if(code===this.simulation.passcode) {
-                this.dispatch(lockActions.unlock(code));
+                this.locked = false;
                 this.echo("unlocked");
                 this.enable(true);
+                this.hitLockTimer();
+                this.lock.onLockUpdated && this.lock.onLockUpdated(this, { locked: this.locked, timeout: this.timeout || false });
                 resolve();
             } else {
                 this.echo("access denied");
@@ -92,7 +129,7 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
     }
 
     enable(enable: boolean) {
-        return this.request(enable?"enable":"disable", { enable }, (resolve, reject) => {
+        return this.request("motor."+(enable?"enable":"disable"), { enable }, (resolve, reject) => {
             this.echo((enable?"enabled":"disabled"));
             this.axis[0].enabled = enable;
             if(!enable && this.isMoving()) {
@@ -104,17 +141,19 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
     }
 
     open(percent : number) {
-        return this.request("open", { percent }, (resolve, reject) => {
+        return this.request("drawer.open", { percent: Math.round(percent*100) }, (resolve, reject) => {
             this.echo("open " + percent);
             this.moveToPercent(percent);
+            this.clearLockTimer();
             //this.dispatch(lockActions.open(percent));
         });
     }
 
     close() {
-        return this.request("close", { }, (resolve, reject) => {
+        return this.request("drawer.close", { }, (resolve, reject) => {
             this.echo("close");
             this.moveTo(0);
+            this.hitLockTimer();
             //this.dispatch(lockActions.close());
         });
     }
@@ -130,12 +169,6 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
             button: false,
             state: state
         });
-
-        /*this.dispatch(lockActions.update({
-            state,
-            position,
-            target
-        }));*/
     }
 
     isMoving() {
@@ -154,7 +187,7 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
 
 
     isMotorMoving(motor: IMotorState) {
-        return motor.target!==motor.position;
+        return motor.target!==motor.position && motor.speed>0;
     }
 
     moveMotorToPercent(motor: IMotorState, percent) {
@@ -169,14 +202,13 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
     }
 
     stopMotor(motor: IMotorState, supressUpdate: boolean = false) {
-        if(motor.isMoving()) {
+        if(motor.state!=="idle") {
             motor.target = motor.position;
             motor.speed = 0;
             motor.state = "idle";
 
             if(!supressUpdate)
                 motor.sendUpdate();
-            console.log("stop");
         }
     }
 
@@ -190,21 +222,24 @@ export default class SimProtocol extends Protocol implements IProtocol, ILockPro
                         let speed = extending ? motor.config.speed.extending : motor.config.speed.retracting;
                         motor.speed = speed;
                         speed /= 10;
+                        //console.log("update "+motor.position+" => "+motor.target, motor.target!==motor.position, motor);
 
                         if (extending) {
                             motor.state = "extending";
                             motor.position += speed;
-                            if (motor.position > motor.target)
+                            if (motor.position >= motor.target)
                                 motor.stop(true);
                         } else {
                             motor.state = "retracting";
                             motor.position -= speed;
-                            if (motor.position < motor.target)
+                            if (motor.position <= motor.target)
                                 motor.stop(true);
                         }
-                        //console.log("update "+motor.position+" => "+motor.target, motor);
                         motor.sendUpdate();
                         anyUpdated = true;
+                    } else if(motor.state!=="idle") {
+                        // position reached, set motor to idle
+                        motor.stop(false);
                     }
                 });
 

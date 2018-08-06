@@ -6,10 +6,9 @@ export function select(lock) {
     }
 }
 
-export function unlock(code: string) {
+export function unlock() {
     return {
-        type: 'UNLOCK',
-        code: code
+        type: 'UNLOCK'
     }
 }
 

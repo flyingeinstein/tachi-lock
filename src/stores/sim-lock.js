@@ -25,10 +25,8 @@ export default function lockReducer(state=null, action) {
             return {...state, status: { ...action.payload }}
         }
         case 'UNLOCK': {
-            if (action.code === '111') {
-                //console.log("unlocked");
-                return {...state, locked: false}
-            }
+            console.log("unlocked");
+            return {...state, locked: false}
         }
             break;
         case 'OPEN': {

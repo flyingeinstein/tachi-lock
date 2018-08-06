@@ -23,7 +23,8 @@ import Keypad from './redux/ConnectedKeypad';
 import Dots from './components/DancinDots';
 import Tracker from './components/Tracker';
 import Lock, { LockProps } from './locks/Simple';
-import Protocols from "./protocols/protocols";
+import Protocols from './protocols/protocols';
+import KPI from './components/KPI';
 
 
 const instructions = Platform.select({
@@ -49,7 +50,10 @@ type State = {
     protocol: IProtocol,
     controls: {
         keypad: Animated,
-        fader: Animated
+        fader: Animated,
+        keypadFader: Animated,
+        dots: Animated,
+        locktitle: Animated
     },
 };
 
@@ -100,35 +104,74 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
 
       this.state = {
         passcode: '',
-        viewState: 0,
+        viewState: ViewState.SelectiveUnlock,
         controls: {
             keypad: new Animated.Value(0),
-            fader: new Animated.Value(0)
+            keypadFader: new Animated.Value(1),
+            dots: new Animated.Value(0),
+
+            lockFader: new Animated.Value(0),
+            lockTitle: new Animated.Value(300)
         }
       };
 
-      //setTimeout(()=>{ this.props.select(this.props.locks[0]); this.props.unlock("111"); }, 100);
+      //setTimeout(()=>{ this.selectLock(this.props.locks[0]); this.onKeypadEntry("1111", 0); }, 1500);
     }
 
     showKeypad() {
-        Animated.parallel([
+        let x = Animated.parallel([
+            Animated.timing(
+                this.state.controls.lockFader,
+                {
+                    toValue: 0,
+                    duration: 500
+                }
+            ),
+            Animated.spring(
+                this.state.controls.lockTitle,
+                {
+                    toValue: 300,
+                    velocity: 1,
+                    tension: 2,
+                    friction: 16,
+                    onComplete: () => {
+                        // clear lock now that title and lock is hidden
+                        this.setState({
+                            lock: null,
+                            protocol: null
+                        });
+                    }
+                }
+            ),
             Animated.spring(
                 this.state.controls.keypad,
                 {
                     toValue: 0,
                     velocity: 1,
                     tension: 2,
-                    friction: 16
+                    friction: 16,
+                    delay: 500
                 }
             ),
             Animated.timing(
-                this.state.controls.fader,
+                this.state.controls.keypadFader,
+                {
+                    toValue: 1,
+                    duration: 1000,
+                    delay: 500
+                }
+            ),
+            Animated.spring(
+                this.state.controls.dots,
                 {
                     toValue: 0,
-                    duration: 1000
+                    velocity: 1,
+                    tension: 2,
+                    friction: 16
                 }
             )
-        ]).start();
+        ]);
+        x.start();
     }
 
     showControls() {
@@ -136,57 +179,93 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
             Animated.spring(
                 this.state.controls.keypad,
                 {
-                    toValue: Dimensions.get('window').height,
+                    toValue: -Dimensions.get('window').height,
                     velocity: 1,
                     tension: 2,
                     friction: 16
                 }
             ),
             Animated.timing(
-                this.state.controls.fader,
+                this.state.controls.keypadFader,
+                {
+                    toValue: 0,
+                    duration: 1000
+                }
+            ),
+            Animated.spring(
+                this.state.controls.dots,
+                {
+                    toValue: -300,
+                    velocity: 1,
+                    tension: 2,
+                    friction: 16
+                }
+            ),
+            Animated.timing(
+                this.state.controls.lockFader,
                 {
                     toValue: 1,
                     duration: 1000
+                }
+            ),
+            Animated.spring(
+                this.state.controls.lockTitle,
+                {
+                    toValue: 0,
+                    velocity: 1,
+                    tension: 2,
+                    friction: 16
                 }
             )
         ]).start();
     }
 
+    lockStateChanged(state) {
+        let { viewState } = this.state;
+        if(state.locked && viewState===ViewState.Control) {
+            viewState = ViewState.Welcome;
+        }
+        this.setState({ viewState: viewState, lockState: state }, () => this.onStoreChange());
+    }
+
     onStoreChange() {
-        let { viewState, lock } = this.state;
+        let { viewState, lock, lockState } = this.state;
         //console.log("store-changed  state: ", viewState, lock);
 
         // our app view logic here
         switch(viewState) {
             case ViewState.Welcome: {
                 // show keypad and move to next state
-                this.setState({viewState: ViewState.SelectiveUnlock});
+                this.setState({
+                    viewState: ViewState.SelectiveUnlock,
+                    passcode: ''
+                });
                 this.showKeypad();
-                console.log("moving from Welcome => SelectiveUnlock");
+                //console.log("moving from Welcome => SelectiveUnlock");
             } break;
 
             case ViewState.SelectiveUnlock: {
-                if(lock && !lock.locked) {
+                if(lockState && !lockState.locked) {
                     this.setState({viewState: ViewState.Control});
                     this.showControls();
-                    console.log("moving from SelectiveUnlock => Control");
+                    //console.log("moving from SelectiveUnlock => Control");
                 }
             } break;
 
             case ViewState.Unlock: {
-                if(lock && !lock.locked) {
+                if(lockState && !lockState.locked) {
                     this.setState({viewState: ViewState.Control});
                     this.showControls();
-                    console.log("moving from Unlock => Control");
+                    //console.log("moving from Unlock => Control");
                 }
             } break;
 
             case ViewState.Control: {
-                if(!lock) {
+                if(!lockState) {
                     this.setState({viewState: ViewState.SelectiveUnlock});
                     this.showKeypad();
-                    console.log("moving from Control => Control");
-                } else if(lock.locked) {
+                    //console.log("moving from Control => Control");
+                } else if(lockState.locked) {
                     this.setState({viewState: ViewState.Unlock});
                     this.showKeypad();
                 }
@@ -217,7 +296,7 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
 
     getDots() {
         let { lock, passcode } = this.state;
-        let digits = lock ? lock.digits+1 : 5;
+        let digits = lock ? lock.digits+1 : 4;
         let dots = [];
         for(let x=0; x<digits; x++) {
             dots.push((x < passcode.length) ? '*':'.');
@@ -226,15 +305,33 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
     }
 
     onPasscodeMatch() {
-
+        this.onStoreChange();
     }
 
-    onPasscodeMismatch() {
+    onPasscodeMismatch(e) {
+        console.log("password incorrect");
         this.setState({
             passcode: '',
             lock: null,
             protocol: null
         });
+    }
+
+    selectLock(l) {
+        let lock = {
+            ...l,
+            onLockUpdated: (lock, state) => this.lockStateChanged(state),
+            onDrawerUpdated: (lock, state) => this.setState({ drawerState: state }),
+            onMotorUpdated: (lock, axis, state) => this.setState({ motorState: state })
+
+        };    // copy lock config
+        let protocol = Protocols.create(lock, store.dispatch.bind(store));
+        this.setState({
+            lock,
+            protocol
+        });
+        console.log("App selected lock ", lock);
+        this.props.select(lock);
     }
 
     onKeypadEntry(passcode, pending) {
@@ -245,7 +342,7 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
                 if(passcode.length-1===lock.digits)
                     protocol.unlock(passcode.substr(1))
                         .then(() => this.onPasscodeMatch() )
-                        .catch(() => this.onPasscodeMismatch() );
+                        .catch((e) => this.onPasscodeMismatch(e) );
             } else {
                 if(passcode.length===0) {
 
@@ -257,20 +354,7 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
                             : l.prefix;
 
                         if (prefix === passcode[0]) {
-                            let lock = {
-                                ...l,
-                                onLockUpdated: (lock, state) => this.setState({ lockState: state }),
-                                onDrawerUpdated: (lock, state) => this.setState({ drawerState: state }),
-                                onMotorUpdated: (lock, axis, state) => this.setState({ motorState: state })
-
-                            };    // copy lock config
-                            let protocol = Protocols.create(lock, store.dispatch.bind(store));
-                            this.setState({
-                                lock,
-                                protocol
-                            });
-                            //console.log("protocl app ", lock);
-                            this.props.select(lock);
+                            this.selectLock(l);
                             return false;   // no more matching
                         }
                     });
@@ -283,37 +367,50 @@ const App = connect( mapStateToProps, mapDispatchToProps)(class App extends Comp
     }
 
     render() {
-        let { lock, lockState, drawerState, motorState } = this.state;
+        let { lock, protocol, lockState, drawerState, motorState, viewState } = this.state;
         let state = {
             ...lockState,
             ...drawerState,
-            motor: motorState
+            motor: motorState,
         };
-
+        let showControls = viewState === ViewState.Control;
+        let stateIcon = null;
+        //if(lock && state ) console.log("lock ", state);
         return (
               <View style={styles.container}>
-                  <LinearGradient colors={['#364F64', '#ACBDC8', '#3C5160']} style={styles.container}>
+                  <LinearGradient colors={['#0E5B72', '#06252E']} style={styles.container}>
 
-                      <View style={styles.welcome}>
+                      <Animated.View style={[styles.welcome, {opacity: this.state.controls.keypadFader}]}>
                         <Text style={styles.welcomeText}>
                             { this.getBannerText() }
                         </Text>
-                      </View>
+                      </Animated.View>
 
                       <Text style={styles.welcomeText}>
                           { this.state && this.state.code }
                       </Text>
 
-                      <Animated.View style={styles.feedback}>
+                      <Animated.View style={[styles.feedback, styles.dots, {transform: [{translateX: this.state.controls.dots}]}]}>
                           <Dots pattern={this.getDots()} visible={!this.state.authenticated} />
                       </Animated.View>
 
-                      <Animated.View style={[ styles.controls, {opacity: this.state.controls.fader} ]}>
-                        <Lock lock={this.state.lock} protocol={this.state.protocol} state={state} />
+                      <Animated.View style={[styles.feedback, styles.lockTitle, {transform: [{translateX: this.state.controls.lockTitle}]}]}>
+                          <Text style={styles.title}>{lock ? lock.name : ''}</Text>
                       </Animated.View>
 
-                      <Animated.View style={[styles.keypadView,
-                          {transform: [{translateY: this.state.controls.keypad}]}]}
+                      <Animated.View style={[ styles.controls, {opacity: this.state.controls.lockFader} ]}>
+                          <Lock lock={lock} protocol={protocol} state={state} />
+                      </Animated.View>
+
+                      <KPI order={0} icon='lock' show={showControls && drawerState.state==='idle' && drawerState.closed } />
+                      <KPI order={0} icon='angle-double-up' header='retracting' show={showControls && drawerState.state==='retracting'} />
+                      <KPI order={0} icon='angle-double-down' header='extending' show={showControls && drawerState.state==='extending'} />
+                      <KPI order={0} icon='exclamation-triangle' header='jammed' show={showControls && drawerState.state==='jammed'} />
+
+                      <KPI order={1} header='Last Unlocked' footer='days ago' value={'15'} show={showControls} />
+                      <KPI order={2} footer='Relock' value={state.timeout ? state.timeout.remaining*100/state.timeout.interval : 0} type='pie' show={showControls && state.timeout} />
+
+                      <Animated.View style={[styles.keypadView, {bottom: this.state.controls.keypad}]}
                       >
                         <Keypad
                             length={lock ? (lock.digits+1) : 5 }
@@ -345,9 +442,10 @@ const styles = StyleSheet.create({
         width: '100%'
     },
     welcome: {
-        flex: 1,
         justifyContent: 'center',
-        height: 150
+        height: 30,
+        position: 'absolute',
+        top: 45
     },
     welcomeText: {
         color: '#aaa'
@@ -358,11 +456,16 @@ const styles = StyleSheet.create({
       marginBottom: 5,
     },
     keypadView: {
-
+        position: 'absolute',
+        bottom: 0,
+        marginBottom: 35
     },
     controls: {
-        flex: 1,
-        flexDirection: 'row'
+        position: 'absolute',
+        top: 140,
+        left: 80,
+        height: 400,
+        width: 100
     },
     icon: {
         textAlign: 'center',
@@ -370,9 +473,32 @@ const styles = StyleSheet.create({
         fontSize: 28
     },
     feedback: {
+        position: 'absolute',
+        top: 100,
+    },
+    dots: {
         flex: 1,
         flexDirection: 'row',
         height: 64
+    },
+    locktitle: {
+        height: 64
+    },
+    title: {
+        fontFamily: 'arial',
+        fontSize: 18,
+        color: 'white'
+    },
+    header: {
+        display: 'none',
+        backgroundColor: '#57C9EA',
+        width: '130%',
+        height: 170,
+        position: 'absolute',
+        top: -20,
+        left: -20,
+        zIndex: -4,
+        transform: [{ rotateZ: '-5deg' }]
     },
     footer: {
         height: 48
